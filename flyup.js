@@ -20,16 +20,30 @@ function resizeCanvas() {
 // Initial canvas size
 resizeCanvas();
 
-// Paper airplane object
-let paperAirplane = null;
+// Array to store multiple paper airplanes
+let paperAirplanes = [];
+
+// Constants for movement
+const PLANE_SPEED = 6; // Reduced base speed
+const GRAVITY = 5;
+const LOOP_RADIUS = 80; // Initial radius of the loop
+const LOOP_SPEED = 0.08; // Speed of the looping motion
+const EXPANSION_RATE = 0.5; // Rate at which the loop expands
 
 // Dragging state
 let isDragging = false;
+let draggedPlane = null;
 let dragOffsetX = 0;
 let dragOffsetY = 0;
-let lastPos = { x: 0, y: 0 };
-let currentPos = { x: 0, y: 0 };
 let lastTime = 0;
+
+// Current color for the paper airplane
+let currentColor = '';
+
+// Function to generate a random color
+function generateRandomColor() {
+    return `rgb(${Math.random() * 255},${Math.random() * 255},${Math.random() * 255})`;
+}
 
 // All the important stuff
 function initGame() {
@@ -38,7 +52,6 @@ function initGame() {
         return;
     }
     window.addEventListener('resize', resizeCanvas);
-    resetGame();
     showSplashScreen();
     requestAnimationFrame(gameLoop);
 }
@@ -55,20 +68,21 @@ function handleStart(event) {
     event.preventDefault();
     const pos = getEventPos(event);
 
-    if (!gameRunning) {
+    if (splashScreen.style.display !== 'none') {
         splashScreen.style.display = 'none';
-        gameRunning = true;
-        createPaperAirplane(pos.x, pos.y);
-        return;
     }
 
-    if (paperAirplane && isPointInside(pos, paperAirplane)) {
-        isDragging = true;
-        dragOffsetX = pos.x - paperAirplane.x;
-        dragOffsetY = pos.y - paperAirplane.y;
-        lastPos = { x: paperAirplane.x, y: paperAirplane.y };
-        currentPos = { x: paperAirplane.x, y: paperAirplane.y };
-        lastTime = Date.now();
+    let clickedPlane = paperAirplanes.find(plane => isPointInside(pos, plane));
+
+    if (clickedPlane) {
+        if (clickedPlane.state === '2paper') {
+            launchPaperAirplane(clickedPlane);
+        } else if (clickedPlane.state === '1blank') {
+            transformPaperAirplane(clickedPlane, '2paper');
+        }
+    } else {
+        currentColor = generateRandomColor();
+        createPaperAirplane(pos.x, pos.y);
     }
 }
 
@@ -113,38 +127,86 @@ function handleDoubleTap(event) {
 }
 
 function createPaperAirplane(x, y) {
-    const img = new Image();
-    img.src = '1blank.svg';
-    img.onload = () => {
-        paperAirplane = {
-            x: x - 25, // Center the 50x50 image on the click point
-            y: y - 25,
-            width: 50,
-            height: 50,
-            image: img,
-            state: '1blank',
-            vx: 0,
-            vy: 0
-        };
-    };
+    fetch('1blank.svg')
+        .then(response => response.text())
+        .then(svgData => {
+            const parser = new DOMParser();
+            const svgDoc = parser.parseFromString(svgData, 'image/svg+xml');
+            const svgElement = svgDoc.documentElement;
+            
+            // Apply the current color to all path elements
+            svgElement.querySelectorAll('path').forEach(path => {
+                path.setAttribute('fill', currentColor);
+            });
+
+            const svgString = new XMLSerializer().serializeToString(svgElement);
+            const img = new Image();
+            img.src = 'data:image/svg+xml;base64,' + btoa(svgString);
+            
+            img.onload = () => {
+                const newPlane = {
+                    x: x - 25,
+                    y: y - 25,
+                    width: 50,
+                    height: 50,
+                    image: img,
+                    state: '1blank',
+                    vx: 0,
+                    vy: 0,
+                    color: currentColor,
+                    centerX: x - 25,
+                    centerY: y - 25,
+                    loopAngle: 0,
+                    loopRadius: LOOP_RADIUS,
+                    rotation: 0
+                };
+                paperAirplanes.push(newPlane);
+            };
+        });
 }
 
-function transformPaperAirplane(newState) {
-    if (paperAirplane) {
-        const img = new Image();
-        img.src = newState === '3crump' ? '3crump.svg' : '2paper.svg';
-        img.onload = () => {
-            paperAirplane.image = img;
-            paperAirplane.state = newState === '3crump' ? '3crump' : '2paper';
+function launchPaperAirplane(plane) {
+    const angle = Math.random() * Math.PI * 2; // Random initial angle
+    plane.vx = Math.cos(angle) * PLANE_SPEED;
+    plane.vy = Math.sin(angle) * PLANE_SPEED;
+    plane.loopAngle = 0; // Starting angle for the loop
+    plane.loopRadius = LOOP_RADIUS; // Starting radius for the loop
+    plane.centerX = plane.x; // Center X of the loop
+    plane.centerY = plane.y; // Center Y of the loop
+    plane.state = '2paper';
+}
 
-            // Make sure to keep any existing velocity after transformation
-            if (newState === '2paper') {
-                // Optionally: Apply a boost to velocity or ensure it's moving
-                paperAirplane.vx = paperAirplane.vx || 1;
-                paperAirplane.vy = paperAirplane.vy || 1;
-            }
-        };
-    }
+function transformPaperAirplane(plane, newState) {
+    const svgFileName = newState === '3crump' ? '3crump.svg' : '2paper.svg';
+    fetch(svgFileName)
+        .then(response => response.text())
+        .then(svgData => {
+            const parser = new DOMParser();
+            const svgDoc = parser.parseFromString(svgData, 'image/svg+xml');
+            const svgElement = svgDoc.documentElement;
+            
+            // Apply the plane's color to all path elements
+            svgElement.querySelectorAll('path').forEach(path => {
+                path.setAttribute('fill', plane.color);
+            });
+
+            const svgString = new XMLSerializer().serializeToString(svgElement);
+            const img = new Image();
+            img.src = 'data:image/svg+xml;base64,' + btoa(svgString);
+            
+            img.onload = () => {
+                plane.image = img;
+                plane.state = newState;
+
+                if (newState === '2paper') {
+                    launchPaperAirplane(plane);
+                } else if (newState === '3crump') {
+                    // Start falling
+                    plane.vx = 0;
+                    plane.vy = 0;
+                }
+            };
+        });
 }
 
 function isPointInside(point, rect) {
@@ -168,51 +230,97 @@ function resetGame() {
     paperAirplane = null;
     isDragging = false;
     gameRunning = false;
+    currentColor = generateRandomColor(); // Generate new color for next game
     showSplashScreen();
 }
 
-function updatePaperAirplane(deltaTime) {
-    if (paperAirplane && paperAirplane.state === '2paper' && !isDragging) {
-        paperAirplane.x += paperAirplane.vx * deltaTime;
-        paperAirplane.y += paperAirplane.vy * deltaTime;
-
-        // Check for collisions with canvas edges
-        if (paperAirplane.x <= 0 || paperAirplane.x + paperAirplane.width >= canvas.width / dpr) {
-            paperAirplane.vx *= -1;
-            transformPaperAirplane('3crump');
+// Update the drawing function to rotate the plane
+function drawPaperAirplanes() {
+    paperAirplanes.forEach(plane => {
+        if (plane.image) {
+            ctx.save();
+            ctx.translate(plane.x + plane.width / 2, plane.y + plane.height / 2);
+            if (plane.rotation) {
+                ctx.rotate(plane.rotation);
+            }
+            ctx.drawImage(plane.image, -plane.width / 2, -plane.height / 2, plane.width, plane.height);
+            ctx.restore();
         }
-        if (paperAirplane.y <= 0 || paperAirplane.y + paperAirplane.height >= canvas.height / dpr) {
-            paperAirplane.vy *= -1;
-            transformPaperAirplane('3crump');
-        }
+    });
+}
 
-        // Apply some drag to slow down the paper airplane
-        const drag = 0.99;
-        paperAirplane.vx *= drag;
-        paperAirplane.vy *= drag;
+function updatePaperAirplanes(deltaTime) {
+    paperAirplanes.forEach((plane, index) => {
+        if (plane.state === '2paper') {
+            // Update loop angle
+            plane.loopAngle += LOOP_SPEED;
 
-        // Stop the paper airplane if it's moving very slowly
-        if (Math.abs(paperAirplane.vx) < 0.1 && Math.abs(paperAirplane.vy) < 0.1) {
-            paperAirplane.vx = 250;
-            paperAirplane.vy = 250;
+            // Calculate new position based on looping motion
+            const loopX = Math.cos(plane.loopAngle) * plane.loopRadius;
+            const loopY = Math.sin(plane.loopAngle) * plane.loopRadius;
+
+            // Update plane position
+            plane.x = plane.centerX + loopX + plane.vx * deltaTime;
+            plane.y = plane.centerY + loopY + plane.vy * deltaTime;
+
+            // Gradually increase loop radius for expanding motion
+            plane.loopRadius += EXPANSION_RATE;
+
+            // Update the center of the loop
+            plane.centerX += plane.vx * deltaTime;
+            plane.centerY += plane.vy * deltaTime;
+
+            // Rotate the plane image
+            plane.rotation = Math.atan2(plane.vy + Math.cos(plane.loopAngle) * LOOP_SPEED * plane.loopRadius, 
+                                        plane.vx - Math.sin(plane.loopAngle) * LOOP_SPEED * plane.loopRadius);
+
+            // Check for collisions with canvas edges
+            if (plane.x <= 0 || plane.x + plane.width >= canvas.width / dpr ||
+                plane.y <= 0 || plane.y + plane.height >= canvas.height / dpr) {
+                transformPaperAirplane(plane, '3crump');
+            }
+        } else if (plane.state === '3crump') {
+            // Apply gravity to make it fall
+            plane.vy += GRAVITY;
+            plane.y += plane.vy * deltaTime;
+
+            // Check for collisions with other crumpled papers
+            for (let i = 0; i < index; i++) {
+                if (paperAirplanes[i].state === '3crump' && checkCollision(plane, paperAirplanes[i])) {
+                    plane.y = paperAirplanes[i].y - plane.height;
+                    plane.vy = 0;
+                    break;
+                }
+            }
+
+            // Stop at the bottom of the screen
+            if (plane.y + plane.height > canvas.height / dpr) {
+                plane.y = canvas.height / dpr - plane.height;
+                plane.vy = 0;
+            }
         }
-    }
+    });
+}
+
+function checkCollision(plane1, plane2) {
+    return plane1.x < plane2.x + plane2.width &&
+           plane1.x + plane1.width > plane2.x &&
+           plane1.y < plane2.y + plane2.height &&
+           plane1.y + plane1.height > plane2.y;
 }
 
 function gameLoop(currentTime) {
     const deltaTime = (currentTime - lastTime) / 1000; // Convert to seconds
     lastTime = currentTime;
 
-    // Update paper airplane position and check for collisions
-    updatePaperAirplane(deltaTime);
+    // Update paper airplane positions and check for collisions
+    updatePaperAirplanes(deltaTime);
 
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
 
-    // Draw paper airplane
-    if (paperAirplane && paperAirplane.image) {
-        ctx.drawImage(paperAirplane.image, paperAirplane.x, paperAirplane.y, paperAirplane.width, paperAirplane.height);
-    }
+    // Draw paper airplanes
+    drawPaperAirplanes();
 
     requestAnimationFrame(gameLoop);
 }
@@ -227,6 +335,6 @@ canvas.addEventListener('mousemove', handleMove, false);
 canvas.addEventListener('touchend', handleEnd, false);
 canvas.addEventListener('mouseup', handleEnd, false);
 canvas.addEventListener('touchcancel', handleCancel, false);
-canvas.addEventListener('dblclick', handleDoubleTap, false);
-canvas.addEventListener('touchstart', handleDoubleTap, false);
+//canvas.addEventListener('dblclick', handleDoubleTap, false);
+//canvas.addEventListener('touchstart', handleDoubleTap, false);
 window.addEventListener('resize', resizeCanvas);
