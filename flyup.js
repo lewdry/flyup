@@ -24,11 +24,11 @@ resizeCanvas();
 let paperAirplanes = [];
 
 // Constants for movement
-const PLANE_SPEED = 6; // Reduced base speed
+const PLANE_SPEED = 10; // Base speed
 const GRAVITY = 5;
-const LOOP_RADIUS = 80; // Initial radius of the loop
-const LOOP_SPEED = 0.08; // Speed of the looping motion
-const EXPANSION_RATE = 0.5; // Rate at which the loop expands
+const LOOP_RADIUS = 30; // Initial radius of the loop
+const LOOP_SPEED = 0.05; // Speed of the looping motion
+const EXPANSION_RATE = 1; // Rate at which the loop expands
 
 // Dragging state
 let isDragging = false;
