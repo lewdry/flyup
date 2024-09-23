@@ -309,12 +309,45 @@ function checkCollision(plane1, plane2) {
            plane1.y + plane1.height > plane2.y;
 }
 
+// Function to generate random values
+function getRandom(min, max) {
+    return Math.random() * (max - min) + min;
+}
+
+// Function to animate paper airplanes
+function animatePaperAirplanes() {
+    paperAirplanes.forEach((plane, index) => {
+        if (plane.state === 'flying') {
+            const speed = getRandom(1, 3); // Random speed
+            const radius = getRandom(50, 150); // Random radius
+            const loops = getRandom(1, 5); // Random number of loops
+
+            gsap.to(plane, {
+                duration: speed,
+                x: `+=${radius}`,
+                y: `+=${radius}`,
+                repeat: loops,
+                yoyo: true,
+                ease: "power1.inOut",
+                onUpdate: () => {
+                    // Update plane position in the game loop
+                    plane.x += plane.vx * deltaTime;
+                    plane.y += plane.vy * deltaTime;
+                }
+            });
+        }
+    });
+}
+
 function gameLoop(currentTime) {
     const deltaTime = (currentTime - lastTime) / 1000; // Convert to seconds
     lastTime = currentTime;
 
     // Update paper airplane positions and check for collisions
     updatePaperAirplanes(deltaTime);
+
+    // Animate paper airplanes
+    animatePaperAirplanes();
 
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
@@ -335,6 +368,4 @@ canvas.addEventListener('mousemove', handleMove, false);
 canvas.addEventListener('touchend', handleEnd, false);
 canvas.addEventListener('mouseup', handleEnd, false);
 canvas.addEventListener('touchcancel', handleCancel, false);
-//canvas.addEventListener('dblclick', handleDoubleTap, false);
-//canvas.addEventListener('touchstart', handleDoubleTap, false);
 window.addEventListener('resize', resizeCanvas);
